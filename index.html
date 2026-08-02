@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flamboyant Noturno em Coração</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #020208;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+            background: #03030d;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="treeCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('treeCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const maxH = window.innerHeight * 0.95;
+            canvas.height = maxH;
+            canvas.width = maxH * 0.75; 
+        }
+        resizeCanvas();
+
+        const groundY = canvas.height * 0.82;
+        const centerX = canvas.width / 2;
+        
+        let seed = {
+            x: centerX,
+            y: -20,
+            vy: 0,
+            gravity: 0.18,
+            radius: 5,
+            active: true
+        };
+
+        let branches = [];
+        let leaves = [];
+        let fallingLeaves = [];
+        let stars = [];
+        let animationStarted = false;
+        let treeFullyGrown = false;
+
+        // Geração do céu estrelado realista
+        for (let i = 0; i < 150; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * groundY,
+                size: Math.random() * 1.8,
+                alpha: Math.random(),
+                twinkleSpeed: 0.01 + Math.random() * 0.02
+            });
+        }
+
+        class Branch {
+            constructor(startX, startY, endX, endY, thickness, color, maxSteps) {
+                this.startX = startX;
+                this.startY = startY;
+                this.endX = endX;
+                this.endY = endY;
+                this.thickness = thickness;
+                this.color = color;
+                this.maxSteps = maxSteps;
+                this.currentStep = 0;
+            }
+
+            update() {
+                if (this.currentStep < this.maxSteps) {
+                    this.currentStep++;
+                    return true;
+                }
+                return false;
+            }
+
+            draw() {
+                let ratio = this.currentStep / this.maxSteps;
+                let currentX = this.startX + (this.endX - this.startX) * ratio;
+                let currentY = this.startY + (this.endY - this.startY) * ratio;
+
+                ctx.beginPath();
+                ctx.moveTo(this.startX, this.startY);
+                ctx.lineTo(currentX, currentY);
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = this.thickness * (1 - ratio * 0.25);
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+
+        // Desenha uma folha realista em formato de coração anatômico/vetorial
+        function drawHeartLeaf(x, y, size, angle, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            
+            ctx.moveTo(0, -size / 4);
+            ctx.bezierCurveTo(-size / 2, -size, -size, -size / 3, -size, 0);
+            ctx.bezierCurveTo(-size, size / 3, -size / 3, size * 0.7, 0, size);
+            ctx.bezierCurveTo(size / 3, size * 0.7, size, size / 3, size, 0);
+            ctx.bezierCurveTo(size, -size / 3, size / 2, -size, 0, -size / 4);
+            
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Função de detecção matemática do formato de coração para a copa
+        function insideHeartSpace(x, y, cx, cy, scale) {
+            let nx = (x - cx) / (scale * 1.35);
+            let ny = -(y - cy) / (scale * 1.1) + 0.35; 
+            return Math.pow(nx*nx + ny*ny - 1, 3) - nx*nx * Math.pow(ny, 3) <= 0;
+        }
+        // Função recursiva para gerar a estrutura de um Flamboyant (mais horizontal e aberto)
+        function createFlamboyantStructure(startX, startY, angle, length, thickness, depth) {
+            if (depth === 0) return;
+
+            let endX = startX + Math.cos(angle) * length;
+            let endY = startY + Math.sin(angle) * length;
+            
+            let color = '#000000'; // Tronco e galhos pretos
+            let maxSteps = Math.floor(length * 0.9); 
+
+            let branch = new Branch(startX, startY, endX, endY, thickness, color, maxSteps);
+            branch.depth = depth;
+            branches.push(branch);
+
+            let numBranches = depth > 7 ? 3 : 2; 
+            let reduction = depth > 7 ? 0.75 : 0.82;
+
+            if (depth > 1) {
+                for (let i = 0; i < numBranches; i++) {
+                    let spread = 0.35 + Math.random() * 0.45;
+                    let newAngle = angle + (i === 0 ? -spread : spread);
+                    if (numBranches === 3 && i === 2) newAngle = angle + (Math.random() * 0.2 - 0.1);
+                    
+                    if (Math.abs(Math.cos(newAngle)) > 0.8) {
+                        newAngle += (newAngle > 0 ? -0.1 : 0.1);
+                    }
+
+                    createFlamboyantStructure(endX, endY, newAngle, length * reduction, thickness * 0.7, depth - 1);
+                }
+            }
+
+            // Geração de folhas em formato de coração dentro do escopo da copa
+            if (depth <= 4) {
+                let leafCount = Math.floor(18 / depth);
+                for (let i = 0; i < leafCount; i++) {
+                    let rx = endX + (Math.random() * 60 - 30);
+                    let ry = endY + (Math.random() * 60 - 30);
+                    
+                    if (insideHeartSpace(rx, ry, centerX, canvas.height * 0.4, canvas.width * 0.38)) {
+                        let r, g, b;
+                        
+                        // Alterado: 85% de chances de nascer verde-escuro vibrante e apenas 15% cinza-escuro para contraste sutil
+                        if (Math.random() > 0.15) {
+                            // Tons ricos de Verde-Escuro (Florestas densas e esmeraldas fechadas)
+                            r = 5 + Math.floor(Math.random() * 20);
+                            g = 45 + Math.floor(Math.random() * 45); // Valor de verde predominante
+                            b = 15 + Math.floor(Math.random() * 25);
+                        } else {
+                            // Tons de Cinza-Escuro sutil (Apenas para sombreamento e profundidade)
+                            let darkGrey = 35 + Math.floor(Math.random() * 20);
+                            r = darkGrey;
+                            g = darkGrey + 2; 
+                            b = darkGrey + 8;
+                        }
+                        
+                        leaves.push({
+                            x: rx,
+                            y: ry,
+                            size: 2 + Math.random() * 4,
+                            color: `rgba(${r}, ${g}, ${b}, ${0.75 + Math.random() * 0.25})`,
+                            grown: 0,
+                            targetSize: 4 + Math.random() * 5,
+                            angle: Math.random() * Math.PI * 2,
+                            delay: branches.length,
+                            isFalling: false
+                        });
+                    }
+                }
+            }
+        }
+
+        // Inicializa a árvore com proporções robustas de Flamboyant
+        createFlamboyantStructure(centerX, groundY, -Math.PI / 2, canvas.height * 0.15, 20, 9);
+        function animate() {
+            // Céu noturno realista (preto e azul profundo com efeito de atmosfera)
+            let skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGrad.addColorStop(0, '#020205');
+            skyGrad.addColorStop(0.4, '#040512');
+            skyGrad.addColorStop(0.7, '#070a24');
+            skyGrad.addColorStop(0.9, '#0d133a');
+            skyGrad.addColorStop(1, '#131b4d');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Renderiza e faz brilhar as estrelas
+            for (let i = 0; i < stars.length; i++) {
+                let s = stars[i];
+                s.alpha += s.twinkleSpeed;
+                if (s.alpha > 1 || s.alpha < 0.2) s.twinkleSpeed = -s.twinkleSpeed;
+                
+                ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Silhuetas de montanhas ao fundo para profundidade realista
+            ctx.fillStyle = '#050714';
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.quadraticCurveTo(canvas.width * 0.3, groundY - 35, canvas.width * 0.6, groundY - 15);
+            ctx.quadraticCurveTo(canvas.width * 0.85, groundY - 5, canvas.width, groundY - 25);
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            ctx.fill();
+
+            // Solo plano preto/noturno
+            ctx.fillStyle = '#020307';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+            // 1. ANIMAÇÃO DA SEMENTE (Glow esmeralda combinando com o novo tom das folhas)
+            if (seed.active) {
+                seed.vy += seed.gravity;
+                seed.y += seed.vy;
+
+                let radialGrad = ctx.createRadialGradient(seed.x, seed.y, 0, seed.x, seed.y, seed.radius * 4);
+                radialGrad.addColorStop(0, '#fff');
+                radialGrad.addColorStop(0.3, '#1d5231');
+                radialGrad.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(seed.x, seed.y, seed.radius * 4, 0, Math.PI * 2);
+                ctx.fillStyle = radialGrad;
+                ctx.fill();
+
+                if (seed.y >= groundY) {
+                    seed.active = false;
+                    animationStarted = true;
+                    // Partículas de impacto verdes escuras
+                    for(let i=0; i<20; i++) {
+                        ctx.beginPath();
+                        ctx.arc(seed.x + (Math.random()*16-8), groundY, Math.random()*2.5, 0, Math.PI*2);
+                        ctx.fillStyle = '#1e3d27';
+                        ctx.fill();
+                    }
+                }
+            }
+
+            // 2. CRESCIMENTO DA ÁRVORE (DE BAIXO PARA CIMA)
+            if (animationStarted) {
+                let allDone = true;
+
+                for (let i = 0; i < branches.length; i++) {
+                    let b = branches[i];
+                    let parentIndex = branches.findIndex(p => p.endX === b.startX && p.endY === b.startY);
+                    
+                    if (parentIndex === -1 || (branches[parentIndex] && branches[parentIndex].currentStep >= branches[parentIndex].maxSteps)) {
+                        b.update();
+                        b.draw();
+                    }
+                    if (b.currentStep < b.maxSteps) allDone = false;
+                }
+
+                // Desabrochar das folhas em formato de coração
+                for (let i = 0; i < leaves.length; i++) {
+                    let l = leaves[i];
+                    if (branches[l.delay - 1] && branches[l.delay - 1].currentStep >= branches[l.delay - 1].maxSteps * 0.5) {
+                        if (l.grown < l.targetSize) {
+                            l.grown += 0.07;
+                        }
+                        if (!l.isFalling) {
+                            drawHeartLeaf(l.x, l.y, l.grown, l.angle, l.color);
+                        }
+                    }
+                }
+
+                if (allDone && !treeFullyGrown) {
+                    treeFullyGrown = true;
+                }
+
+                // 3. ANIMAÇÃO DE FOLHAS CAINDO (Após a árvore crescer)
+                if (treeFullyGrown) {
+                    if (Math.random() < 0.06 && fallingLeaves.length < 60) {
+                        let randomLeaf = leaves[Math.floor(Math.random() * leaves.length)];
+                        if (randomLeaf && !randomLeaf.isFalling && randomLeaf.grown >= randomLeaf.targetSize) {
+                            randomLeaf.isFalling = true;
+                            fallingLeaves.push({
+                                x: randomLeaf.x,
+                                y: randomLeaf.y,
+                                size: randomLeaf.targetSize,
+                                color: randomLeaf.color,
+                                angle: randomLeaf.angle,
+                                swingSpeed: 0.02 + Math.random() * 0.04,
+                                swingRange: 1 + Math.random() * 2,
+                                speedY: 0.6 + Math.random() * 0.8,
+                                time: Math.random() * 100
+                            });
+                        }
+                    }
+                }
+
+                // Atualiza a física e renderiza as folhas caindo
+                for (let i = fallingLeaves.length - 1; i >= 0; i--) {
+                    let fl = fallingLeaves[i];
+                    fl.time += fl.swingSpeed;
+                    
+                    fl.x += Math.sin(fl.time) * fl.swingRange + 0.2; 
+                    fl.y += fl.speedY;
+                    fl.angle += 0.02;
+
+                    drawHeartLeaf(fl.x, fl.y, fl.size, fl.angle, fl.color);
+
+                    if (fl.y >= groundY) {
+                        drawHeartLeaf(fl.x, groundY + Math.random()*2, fl.size, fl.angle, fl.color);
+                        fallingLeaves.splice(i, 1);
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+    </script>
+</body>
+</html>
+<!-- --- COLE ABAIXO DA SUA LINHA 351 (ANTES DO </body) --- -->
+
+<!-- Tela do Aviso Hacker com Fundo Fosco e Animação Suave -->
+<div id="tela-hacker" style="display: none; opacity: 0; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #0f0; font-family: 'Courier New', Courier, monospace; z-index: 99999; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; text-align: center; transition: opacity 1.5s ease;">
+    <!-- Caixa de Conteúdo Dinâmico -->
+    <div id="caixa-conteudo" style="max-width: 600px; border: 2px solid #0f0; padding: 30px; background: rgba(0, 15, 0, 0.9); box-shadow: 0 0 20px #0f0; border-radius: 10px; position: relative;">
+        <h1 style="color: #ff3333; margin-bottom: 20px; font-size: 24px; text-shadow: 0 0 10px #ff3333;">⚠️ AVISO DO SISTEMA</h1>
+        <p style="font-size: 18px; line-height: 1.6; margin-bottom: 35px; white-space: pre-line;">
+            O vírus chamado <strong>'Sua Beleza'</strong> infectou este código. 
+            Nem o Git consegue consertar o conflito que você causou.
+            
+            Para desbloquear o notebook e evitar um Error 404 generalizado, você precisa aceitar sair comigo esta semana. 
+            
+            Caso contrário, você vai perder a chance de sair com um anjo igual eu né 😘.
+        </p>
+        
+        <!-- Área dos Botões -->
+        <div style="display: flex; justify-content: center; gap: 30px; min-height: 50px; position: relative;">
+            <button onclick="aceitarConvite()" style="background: rgb(24, 82, 24); color: #000; border: none; padding: 10px 25px; font-weight: bold; cursor: pointer; font-family: inherit; font-size: 16px; border-radius: 5px; box-shadow: 0 0 10px #0f0;">
+                [ SIM ]
+            </button>
+            <button id="btn-nao" style="background: #ff3333; color: #fff; border: none; padding: 10px 25px; font-weight: bold; cursor: pointer; font-family: inherit; font-size: 16px; border-radius: 5px; box-shadow: 0 0 10px #ff3333; position: absolute; left: 55%;">
+                [ NÃO ]
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        // Tempo de espera para o aviso surgir (6 segundos)
+        setTimeout(() => {
+            const tela = document.getElementById('tela-hacker');
+            tela.style.display = 'flex';
+            setTimeout(() => { tela.style.opacity = '1'; }, 50);
+        }, 6000); 
+
+        // Lógica para o botão "Não" fugir
+        const btnNao = document.getElementById('btn-nao');
+        function fugir() {
+            const container = btnNao.parentElement.parentElement;
+            const limitesX = container.clientWidth - btnNao.clientWidth - 40;
+            const limitesY = container.clientHeight - btnNao.clientHeight - 40;
+            
+            const novoX = Math.random() * limitesX - (limitesX / 2);
+            const novoY = Math.random() * limitesY - (limitesY / 2) + 50;
+            
+            btnNao.style.position = 'absolute';
+            btnNao.style.left = `calc(50% + ${novoX}px)`;
+            btnNao.style.top = `calc(70% + ${novoY}px)`;
+        }
+        btnNao.addEventListener('mouseover', fugir);
+        btnNao.addEventListener('touchstart', (e) => { e.preventDefault(); fugir(); });
+    });
+
+       // Função executada ao clicar em SIM
+    function aceitarConvite() {
+        const caixa = document.getElementById('caixa-conteudo');
+        
+        // Substitui o texto hacker pela tela de sucesso com a foto ao lado
+        caixa.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; gap: 20px; padding: 10px;">
+                <h2 style="color: #0f0; font-size: 28px; margin: 0; text-shadow: 0 0 10px #0f0;">Eu sabia né, bebê 😏</h2>
+                <img src="foto.png" alt="Sua foto" style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid #0f0; object-fit: cover; box-shadow: 0 0 15px #0f0;">
+            </div>
+            <button onclick="document.getElementById('tela-hacker').style.display='none'; setTimeout(() => { alert('Admira a arvore que eu gastei meus ultimos neuronios para conseguir fazer'); }, 100);" style="background: transparent; color: #0f0; border: 1px solid #0f0; padding: 5px 15px; margin-top: 25px; cursor: pointer; font-family: inherit; font-size: 12px; border-radius: 3px;">
+                [ Fechar ]
+            </button>
+        `;
+    }
+
+</script>
